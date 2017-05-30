@@ -14,10 +14,6 @@
 // _threadpool is the internal threadpool structure that is
 // cast to type "threadpool" before it given out to callers
 
-
- 
- 
-
 typedef struct job {
   dispatch_fn function_given;
   void * arguement;
@@ -46,7 +42,7 @@ typedef struct _threadpool_st {
 
 void *worker_thread(void *args) {
   _threadpool *pool = (_threadpool *) args;
-
+    pthread_detach(pthread_self());
     while (1) {
 
        // wait for a signal
@@ -89,9 +85,10 @@ void *worker_thread(void *args) {
           exit(-1);
         }
         j->function_given(j->arguement);
-        
+       
         pthread_mutex_lock(&pool->mutex);
         free(j);
+        
         pool->threads_left++;
         if (pool->threads_left==1) {
           pthread_mutex_unlock(&pool->mutex); 
@@ -120,13 +117,9 @@ void *worker_thread(void *args) {
   printf("leaving\n");
   if (pool->totalNumThread==0) {
     //printf("total num thread left: %d\n",pool->totalNumThread);
-
     pthread_cond_signal(&pool->last_thread_exit);
-
   }
-   pthread_mutex_unlock(&pool->mutex);
-
-   
+  pthread_mutex_unlock(&pool->mutex);
   
   return NULL;
   }
@@ -199,10 +192,7 @@ threadpool create_threadpool(int num_threads_in_pool) {
 void dispatch(threadpool from_me, dispatch_fn dispatch_to_here,
         void *arg) {
     _threadpool *pool = (_threadpool *) from_me;
-    int jqs; 
-    int tl;
-    job * j; 
-    j = (job*) malloc(sizeof(job));
+    
 
     // add your code here to dispatch a thread
     //dispatch a thread by calling the desired function inside worker_thread;
@@ -212,6 +202,10 @@ void dispatch(threadpool from_me, dispatch_fn dispatch_to_here,
         perror("mutex lock failed");
         exit(-1);
     }
+    int jqs; 
+    int tl;
+    job * j; 
+    j = (job*) malloc(sizeof(job));
    
     tl = pool->threads_left;
     jqs = pool->job_queue_sz;
@@ -233,7 +227,6 @@ void dispatch(threadpool from_me, dispatch_fn dispatch_to_here,
     
     pthread_cond_signal(&(pool->doWork));
     
-    
     if (pool->threads_left <= 0) {
       pthread_cond_wait(&pool->allThreadsAreWorking,&pool->mutex);
     }
@@ -249,30 +242,27 @@ void destroy_threadpool(threadpool destroyme) {
   pool->requestDestroy = 't';
   //wait for all threads to finish it's work
   if (pool->totalNumThread > pool->threads_left) {
-    //printf("wait\n");
     pthread_cond_wait(&pool->noThreadsAreWorking,&pool->mutex);
   }
-  //printf("last guy is out");
+  
   //the last guy has finished it's work now
-
-  
-  
   pthread_mutex_unlock(&pool->mutex);
- 
+
   pthread_cond_broadcast(&pool->doWork);
   //wait for broadcast to finnish
   pthread_mutex_lock(&pool->mutex);
   pthread_cond_wait(&pool->last_thread_exit, &pool->mutex);
+  printf("-%d\n", pool->job_queue_sz);
   pthread_mutex_unlock(&pool->mutex);
-  printf("detach\n");
-  int i;
-  for (i=0;i < pool->totalNumThread;i++) {
-    pthread_detach(pool->ListOfThreads[i]);
-
-  }
-  for (i=0;i < pool->totalNumThread;i++) {
-    free(pool->ListOfThreads[i]);
-  }
+  
+  //printf("detach\n");
+  //int i;
+ 
+  printf("free\n");
+  // for (i=0;i < pool->totalNumThread;i++) {
+  //   free(pool->ListOfThreads[i]);
+  // }
+  free(pool->ListOfThreads);
   
   free(pool);
   
